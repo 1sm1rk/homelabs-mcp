@@ -4,4 +4,12 @@ AGENTS.md
 models/
 *.log
 
-# (no Java yet — coding session adds target/ etc. with the code, BACKLOG AP-9)
+# Build output
+target/
+
+# Eclipse / IDE metadata
+.settings/
+.classpath
+.project
+.idea/
+*.iml

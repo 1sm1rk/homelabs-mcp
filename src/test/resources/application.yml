@@ -1,0 +1,6 @@
+spring:
+  ai:
+    mcp:
+      server:
+        # The only mandatory consumer value: the starter never names the domain.
+        name: homelabs-mcp-it

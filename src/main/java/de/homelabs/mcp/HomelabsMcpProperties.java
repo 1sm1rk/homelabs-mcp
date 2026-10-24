@@ -1,0 +1,40 @@
+package de.homelabs.mcp;
+
+import java.util.List;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+
+/**
+ * Configuration of the homelabs MCP starter: MCP resource identity, RFC 9728
+ * Protected Resource Metadata, and the authorization server the resource server
+ * validates tokens against.
+ *
+ * <p>Every value is driven by config, so swapping the authorization server is a
+ * config change, not a code change. The defaults are localhost values: they fit a
+ * single-host deployment and must be overridden (or mapped from the consumer's own
+ * env vars) anywhere else.
+ *
+ * @param enabled               whether the starter wires the OAuth 2.1 resource
+ *                              server (security chain + PRM + JWT decoder); the MCP
+ *                              transport itself comes from Spring AI and stays
+ * @param resource              the resource URI (audience): the MCP endpoint URL; a
+ *                              token's "aud" claim must contain this value
+ * @param resourceMetadataUrl   the PRM document URL returned in the 401
+ *                              WWW-Authenticate header (resource_metadata)
+ * @param authorizationServers  the authorization server issuer(s) advertised in the
+ *                              PRM document (RFC 8414 / OIDC discovery)
+ * @param scopesSupported       scopes this resource advertises in the PRM document
+ *                              (informational; scopes are not enforced)
+ * @param issuer                the issuer URI whose metadata is used to resolve the
+ *                              JWK set and whose "iss" claim tokens must carry
+ */
+@ConfigurationProperties(prefix = "homelabs.mcp")
+public record HomelabsMcpProperties(
+        @DefaultValue("true") boolean enabled,
+        @DefaultValue("http://localhost:8090/mcp") String resource,
+        @DefaultValue("http://localhost:8090/.well-known/oauth-protected-resource") String resourceMetadataUrl,
+        @DefaultValue("http://localhost:8091/realms/hippocampus") List<String> authorizationServers,
+        @DefaultValue("mcp:tools") List<String> scopesSupported,
+        @DefaultValue("http://localhost:8091/realms/hippocampus") String issuer) {
+}
