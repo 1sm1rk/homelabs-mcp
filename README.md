@@ -156,7 +156,7 @@ Testcontainers.
 
 ## First consumer
 
-`homelabs-hippocampus` (two-tier memory service) becomes the first consumer:
-the transport and auth wiring move out of its `security` package into this
-starter, its tool classes stay where they are, and its `HIPPOCAMPUS_*`
-environment variables keep working through the mapping above.
+`homelabs-hippocampus` (two-tier memory service) IS the first consumer since
+2026-10-24 (AP-9 session 2): its transport/auth wiring lives here now, its
+tool classes stayed where they are, and its `HIPPOCAMPUS_*` environment
+variables keep working through the mapping above.
