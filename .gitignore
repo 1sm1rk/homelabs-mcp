@@ -1,0 +1,7 @@
+# Internal agent orientation (private ai2-side content) — never publish
+AGENTS.md
+.env
+models/
+*.log
+
+# (no Java yet — coding session adds target/ etc. with the code, BACKLOG AP-9)
