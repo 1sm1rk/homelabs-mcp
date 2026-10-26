@@ -97,10 +97,24 @@ public class HomelabsMcpAutoConfiguration {
                         .protectedResourceMetadata(metadata -> metadata
                                 .protectedResourceMetadataCustomizer(builder -> builder
                                         .resource(properties.resource())
+                                        // AP-7 one-config-value rule: an explicitly configured
+                                        // authorization-servers list wins, otherwise the PRM
+                                        // advertises the JWT issuer (no consumer-side foot gun —
+                                        // two independent issuer defaults diverging silently).
                                         .authorizationServers(
-                                                servers -> servers.addAll(properties.authorizationServers()))
+                                                servers -> servers.addAll(advertisedAuthorizationServers(properties)))
                                         .scopes(scopes -> scopes.addAll(properties.scopesSupported()))))
                         .authenticationEntryPoint(entryPoint));
         return http.build();
+    }
+
+    /**
+     * The authorization servers the PRM advertises: the explicitly configured list, or
+     * — when the property is unset — the single JWT issuer (RFC 8414 / RFC 9728).
+     */
+    static List<String> advertisedAuthorizationServers(HomelabsMcpProperties properties) {
+        return properties.authorizationServers() != null
+                ? properties.authorizationServers()
+                : List.of(properties.issuer());
     }
 }

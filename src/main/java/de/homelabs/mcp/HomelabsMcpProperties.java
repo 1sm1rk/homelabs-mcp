@@ -3,6 +3,7 @@ package de.homelabs.mcp;
 import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.lang.Nullable;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
@@ -23,7 +24,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param resourceMetadataUrl   the PRM document URL returned in the 401
  *                              WWW-Authenticate header (resource_metadata)
  * @param authorizationServers  the authorization server issuer(s) advertised in the
- *                              PRM document (RFC 8414 / OIDC discovery)
+ *                              PRM document (RFC 8414 / OIDC discovery); NULL means
+ *                              unset — the PRM then advertises {@link #issuer}, per
+ *                              the AP-7 rule "PRM points to the issuer — one config
+ *                              value". Configure explicitly only for multi-AS setups.
  * @param scopesSupported       scopes this resource advertises in the PRM document
  *                              (informational; scopes are not enforced)
  * @param issuer                the issuer URI whose metadata is used to resolve the
@@ -34,7 +38,7 @@ public record HomelabsMcpProperties(
         @DefaultValue("true") boolean enabled,
         @DefaultValue("http://localhost:8090/mcp") String resource,
         @DefaultValue("http://localhost:8090/.well-known/oauth-protected-resource") String resourceMetadataUrl,
-        @DefaultValue("http://localhost:8091/realms/hippocampus") List<String> authorizationServers,
+        @Nullable List<String> authorizationServers,
         @DefaultValue("mcp:tools") List<String> scopesSupported,
         @DefaultValue("http://localhost:8091/realms/hippocampus") String issuer) {
 }

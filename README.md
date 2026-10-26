@@ -69,11 +69,13 @@ homelabs:
   mcp:
     resource: ${MY_SERVICE_RESOURCE:http://localhost:8090/mcp}
     resource-metadata-url: ${MY_SERVICE_RESOURCE_METADATA_URL:http://localhost:8090/.well-known/oauth-protected-resource}
-    authorization-servers:
-      - ${MY_SERVICE_ISSUER_URI:http://localhost:8091/realms/hippocampus}
     scopes-supported:
       - mcp:tools
     issuer: ${MY_SERVICE_ISSUER_URI:http://localhost:8091/realms/hippocampus}
+    # authorization-servers is NOT needed here: unset, the PRM advertises the
+    # issuer (one-config-value). Configure it explicitly only for multi-AS setups:
+    # authorization-servers:
+    #   - https://auth1.example.org/realms/x
 
 server:
   port: 8090
@@ -92,7 +94,7 @@ at all. Anything the application configures wins.
 | `homelabs.mcp.enabled` | `true` | wire the authorization layer (security chain, PRM, JWT decoder); the MCP transport stays either way |
 | `homelabs.mcp.resource` | `http://localhost:8090/mcp` | resource URI = audience: a token's `aud` claim must contain it |
 | `homelabs.mcp.resource-metadata-url` | `http://localhost:8090/.well-known/oauth-protected-resource` | PRM document URL advertised in the 401 challenge |
-| `homelabs.mcp.authorization-servers` | `[http://localhost:8091/realms/hippocampus]` | issuers advertised in the PRM document |
+| `homelabs.mcp.authorization-servers` | unset → PRM advertises `homelabs.mcp.issuer` | issuers advertised in the PRM document; set explicitly only for multi-AS setups |
 | `homelabs.mcp.scopes-supported` | `[mcp:tools]` | scopes advertised in the PRM document (informational, not enforced) |
 | `homelabs.mcp.issuer` | `http://localhost:8091/realms/hippocampus` | issuer whose metadata resolves the JWK set, and whose `iss` claim tokens must carry |
 

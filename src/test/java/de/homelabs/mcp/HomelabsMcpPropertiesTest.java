@@ -25,8 +25,9 @@ class HomelabsMcpPropertiesTest {
             assertThat(properties.resource()).isEqualTo("http://localhost:8090/mcp");
             assertThat(properties.resourceMetadataUrl())
                     .isEqualTo("http://localhost:8090/.well-known/oauth-protected-resource");
-            assertThat(properties.authorizationServers())
-                    .containsExactly("http://localhost:8091/realms/hippocampus");
+            // unset by default — the PRM derives the advertised authorization servers
+            // from the issuer (AP-7 one-config-value rule)
+            assertThat(properties.authorizationServers()).isNull();
             assertThat(properties.scopesSupported()).containsExactly("mcp:tools");
             assertThat(properties.issuer()).isEqualTo("http://localhost:8091/realms/hippocampus");
         });
