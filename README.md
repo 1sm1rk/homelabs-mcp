@@ -54,7 +54,7 @@ java -jar target/homelabs-mcp-0.0.1-SNAPSHOT.jar      # gateway on :8090
 Step 1 is the interim prerequisite: it makes `de.homelabs:hippocampus-mcp` resolvable
 locally. Once adapters are released to GitHub Packages, `~/.m2/settings.xml` gains a
 `github` server entry (token with `read:packages`) and step 1 disappears — the pom
-already pins the adapter version.
+then pins a released adapter version instead of a snapshot (see [CI/CD](#cicd)).
 
 Startup is config-complete out of the box (localhost defaults); point it at a real
 authorization server with the environment variables below.
@@ -126,6 +126,63 @@ only the packaged jar: `eclipse-temurin:25-jre-noble`, non-root (`ubuntu`), port
 and a healthcheck that probes the public PRM document (explicit `bash`, host and port
 joined with a slash — the runtime image's `/bin/sh` is dash and bash's `/dev/tcp`
 rejects `host:port`).
+
+## CI/CD
+
+`.github/workflows/ci.yml` runs on every pull request to `main`, on every push to
+`main`, on `v*` tags and on manual dispatch:
+
+| Job | Runs on | What it does |
+|---|---|---|
+| `verify` | every pull request, every push, every tag | `mvn -B verify` with the adapter resolved from GitHub Packages; a red run blocks every publish |
+| `publish-image` | pushes (and manual runs) on `main` | builds and pushes the container image |
+
+Merge to `main` publishes `ghcr.io/1sm1rk/homelabs-mcp` tagged `latest` and
+`sha-<commit>` (amd64). Deployment hosts pull instead of building:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+The image job uses the Dockerfile's **packages mode** deliberately: the build
+context holds no sibling project checkout, so the adapter comes from GitHub
+Packages through the `github_token` build secret — the published image is always
+built from released adapter artifacts.
+
+### Adapter releases and the build prerequisite
+
+`verify` resolves `de.homelabs:hippocampus-mcp` from GitHub Packages; the workflow
+generates a `settings.xml` for that (`github` server entry plus the packages
+repository, credentials from `GITHUB_TOKEN`, never echoed). Three things must line
+up before the first green run:
+
+1. an adapter release exists — a `vX.Y.Z` tag in the hippocampus repository
+   publishes it,
+2. `hippocampus-mcp.version` in [`pom.xml`](pom.xml) pins that released version.
+   It currently pins `0.0.1-SNAPSHOT`, which exists only in local Maven
+   repositories — until the first release plus a version bump, `verify` fails with
+   an error message naming exactly these prerequisites,
+3. this repository may read that package (see below).
+
+Order matters on the very first round: tag the adapter release, grant the access
+rights, then bump the version here — before that the `verify` job on `main` cannot
+go green and the image job therefore cannot run.
+
+A new adapter release is consumed with a normal pull request:
+
+```bash
+mvn versions:set-property -Dproperty=hippocampus-mcp.version -DnewVersion=0.1.0
+```
+
+### One-time repository settings
+
+- Settings → Branches → branch protection rule for `main`: require the status
+  check **`verify`**.
+- Packages → `homelabs-mcp` (container image) → package settings: visibility
+  **public**, so the deployment host needs no registry credentials.
+- In the hippocampus repository: Packages → `hippocampus-mcp` → *Manage Actions
+  access* → add `1sm1rk/homelabs-mcp` with **Read** (GitHub Packages requires an
+  authenticated read even for public packages).
 
 ## Verification
 

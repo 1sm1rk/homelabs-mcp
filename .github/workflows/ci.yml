@@ -1,0 +1,136 @@
+# CI/CD for the MCP gateway.
+#
+# Flow: feature branch -> pull request (verify) -> merge to main (verify +
+# container image). `verify` resolves the adapter artifacts from GitHub
+# Packages, so it needs `packages: read` (plus a one-time access grant on the
+# package side — see the README).
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# PR builds supersede each other; pushes never cancel a running job (a
+# cancelled publish would leave a half-pushed image).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/1sm1rk/homelabs-mcp
+
+jobs:
+  # Branch protection points at exactly this job name: keep `verify` stable.
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Reading the adapter package published by the hippocampus repository.
+      packages: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_ACTOR: ${{ github.actor }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      # Adapters are not on Maven Central: the `github` server entry and the
+      # GitHub Packages repository both come from this throwaway settings file
+      # (the token is never echoed). The pom's repository-independent defaults
+      # stay untouched, so local builds keep working against ~/.m2.
+      - name: Write Maven settings for GitHub Packages
+        run: |
+          cat > "$RUNNER_TEMP/settings.xml" <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>github-packages</id>
+                <repositories>
+                  <repository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/1sm1rk/homelabs-hippocampus</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </repository>
+                </repositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>github-packages</activeProfile>
+            </activeProfiles>
+          </settings>
+          XML
+      # An unresolvable adapter is the expected state until the first adapter
+      # release + a version bump in pom.xml, so it gets a message naming the
+      # prerequisites instead of a bare Maven stack trace.
+      - name: mvn verify
+        run: |
+          if mvn -B -ntp -s "$RUNNER_TEMP/settings.xml" verify 2>&1 | tee "$RUNNER_TEMP/verify.log"; then
+            exit 0
+          fi
+          if grep -q 'de\.homelabs:hippocampus-mcp' "$RUNNER_TEMP/verify.log" \
+             && grep -qi 'could not be resolved' "$RUNNER_TEMP/verify.log"; then
+            echo "::error::de.homelabs:hippocampus-mcp could not be resolved. Required: (1) a released adapter version in GitHub Packages (tag vX.Y.Z in the hippocampus repository), (2) hippocampus-mcp.version in pom.xml pinned to that release (a SNAPSHOT exists only in local Maven repositories), (3) this repository allowed to read the hippocampus package (package settings -> Manage Actions access)."
+          fi
+          exit 1
+
+  # Every merge to main produces a ready-to-pull image: `latest` for the
+  # deployment host, `sha-<commit>` to pin or roll back a specific build.
+  publish-image:
+    name: publish-image
+    needs: verify
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # The Dockerfile's contract is the parent `projects/` layout as build
+      # context with `homelabs-mcp/Dockerfile` inside it.
+      - uses: actions/checkout@v7
+        with:
+          path: projects/homelabs-mcp
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to the container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute the short-commit tag
+        id: tags
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # Packages mode on purpose: the build context carries no sibling project
+      # checkout, so the adapter comes from GitHub Packages through the build
+      # secret instead of being built inline.
+      - name: Build and push the image
+        uses: docker/build-push-action@v7
+        with:
+          context: projects
+          file: projects/homelabs-mcp/Dockerfile
+          platforms: linux/amd64
+          push: true
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ steps.tags.outputs.short_sha }}
