@@ -159,6 +159,12 @@ Testcontainers.
 ## First consumer
 
 `homelabs-hippocampus` (two-tier memory service) IS the first consumer since
-2026-10-24 (AP-9 session 2): its transport/auth wiring lives here now, its
+2026-10-24: its transport/auth wiring lives here now, its
 tool classes stayed where they are, and its `HIPPOCAMPUS_*` environment
 variables keep working through the mapping above.
+
+## Commit messages
+
+Commit messages are short and describe the change itself. They deliberately
+avoid references to internal planning artifacts (ADRs, work packages): those
+documents are not part of this public repository.
