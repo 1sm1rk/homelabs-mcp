@@ -17,6 +17,12 @@
     <packaging>jar</packaging>
     <name>homelabs-mcp-spring-boot-starter</name>
     <description>Spring Boot starter: MCP server transport (Streamable-HTTP) plus OAuth 2.1 resource server with RFC 9728 Protected Resource Metadata</description>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
 
     <properties>
         <java.version>25</java.version>

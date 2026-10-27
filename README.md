@@ -168,3 +168,7 @@ variables keep working through the mapping above.
 Commit messages are short and describe the change itself. They deliberately
 avoid references to internal planning artifacts (ADRs, work packages): those
 documents are not part of this public repository.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
