@@ -1,15 +1,10 @@
-package de.homelabs.mcp.autoconfigure;
+package de.homelabs.mcp.security;
 
 import java.util.List;
 
-import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
-import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -28,36 +23,30 @@ import org.springframework.security.web.SecurityFilterChain;
 import de.homelabs.mcp.HomelabsMcpProperties;
 
 /**
- * Wires the OAuth 2.1 resource server of an MCP service: every request carries a
- * JWT in the {@code Authorization} header, only the Protected Resource Metadata
- * (RFC 9728) discovery document is public.
+ * Wires the OAuth 2.1 resource server of the gateway: every request carries a JWT in
+ * the {@code Authorization} header, only the Protected Resource Metadata (RFC 9728)
+ * discovery document is public.
  *
- * <p>The MCP transport itself is not built here — it comes from Spring AI's MCP
- * server starter on the classpath, with the Streamable-HTTP/synchronous defaults
- * contributed by {@link McpTransportDefaultsEnvironmentPostProcessor}. This class
- * adds exactly the authorization layer and nothing domain-specific, so consuming
- * applications only declare their tools ({@code @McpTool} beans in their own
- * packages) and their server name.
+ * <p>The MCP transport is not built here — it comes from Spring AI's MCP server starter
+ * and the {@code spring.ai.mcp.server.*} values in {@code application.yml}. This class
+ * adds exactly the authorization layer and nothing domain-specific: tools arrive as
+ * adapter modules whose {@code @McpTool} beans the application scans.
  *
- * <p>Ordered before the Boot auto-configurations that would otherwise claim the
- * {@link JwtDecoder} or the default security chain, so the beans below win and
- * Boot's defaults back off; any consumer bean of the same type wins over them
- * ({@code @ConditionalOnMissingBean}).
+ * <p>Beans are declared unconditionally on purpose. The gateway is the top of the
+ * stack, not a library: nobody negotiates with these definitions, so there is no
+ * conditional activation and no back-off logic. A test that needs a different
+ * {@link JwtDecoder} simply contributes a primary one.
  */
-@AutoConfiguration(before = { OAuth2ResourceServerAutoConfiguration.class,
-        ServletWebSecurityAutoConfiguration.class })
-@ConditionalOnProperty(name = "homelabs.mcp.enabled", matchIfMissing = true)
-@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(HomelabsMcpProperties.class)
-public class HomelabsMcpAutoConfiguration {
+public class McpSecurityConfiguration {
 
     /**
      * JWT validation bound to issuer and audience. The issuer metadata (and with it
-     * the JWK set) is resolved lazily on the first token, so the application starts
-     * even while its authorization server is still coming up.
+     * the JWK set) is resolved lazily on the first token, so the gateway starts even
+     * while its authorization server is still coming up.
      */
     @Bean
-    @ConditionalOnMissingBean(JwtDecoder.class)
     JwtDecoder homelabsMcpJwtDecoder(HomelabsMcpProperties properties) {
         return new SupplierJwtDecoder(() -> {
             NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(properties.issuer()).build();
@@ -80,7 +69,6 @@ public class HomelabsMcpAutoConfiguration {
      * at that document (RFC 9728 flow the MCP authorization spec builds on).
      */
     @Bean
-    @ConditionalOnMissingBean(SecurityFilterChain.class)
     SecurityFilterChain homelabsMcpSecurityFilterChain(HttpSecurity http, HomelabsMcpProperties properties)
             throws Exception {
         BearerTokenAuthenticationEntryPoint entryPoint = new BearerTokenAuthenticationEntryPoint();
@@ -97,10 +85,10 @@ public class HomelabsMcpAutoConfiguration {
                         .protectedResourceMetadata(metadata -> metadata
                                 .protectedResourceMetadataCustomizer(builder -> builder
                                         .resource(properties.resource())
-                                        // AP-7 one-config-value rule: an explicitly configured
+                                        // One-config-value rule: an explicitly configured
                                         // authorization-servers list wins, otherwise the PRM
-                                        // advertises the JWT issuer (no consumer-side foot gun —
-                                        // two independent issuer defaults diverging silently).
+                                        // advertises the JWT issuer — two independent issuer
+                                        // defaults must never diverge silently.
                                         .authorizationServers(
                                                 servers -> servers.addAll(advertisedAuthorizationServers(properties)))
                                         .scopes(scopes -> scopes.addAll(properties.scopesSupported()))))

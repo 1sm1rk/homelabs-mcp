@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The PRM document and the 401 challenge are driven by the {@code homelabs.mcp.*}
- * namespace alone — no value is hardcoded, which is what lets a second deployment (or a
- * second project) reuse the starter.
+ * namespace alone — no value is hardcoded, which is what lets a second deployment
+ * (dev vs. prod, another host) reuse the same image and code.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "homelabs.mcp.resource=https://memory.example.org/mcp",

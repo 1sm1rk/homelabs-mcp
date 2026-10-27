@@ -12,11 +12,11 @@
     </parent>
 
     <groupId>de.homelabs</groupId>
-    <artifactId>homelabs-mcp-spring-boot-starter</artifactId>
+    <artifactId>homelabs-mcp</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
-    <name>homelabs-mcp-spring-boot-starter</name>
-    <description>Spring Boot starter: MCP server transport (Streamable-HTTP) plus OAuth 2.1 resource server with RFC 9728 Protected Resource Metadata</description>
+    <name>homelabs-mcp</name>
+    <description>MCP gateway for the homelabs services: one MCP server (Streamable-HTTP) with an OAuth 2.1 resource server and RFC 9728 Protected Resource Metadata, composing its tools from adapter modules</description>
     <licenses>
         <license>
             <name>Apache License, Version 2.0</name>
@@ -26,24 +26,33 @@
 
     <properties>
         <java.version>25</java.version>
-        <!-- Same Spring AI line as the first consumer (homelabs-hippocampus, ADR 0003);
-             patch upgrades happen together with the consumer, not here. -->
+        <!-- The Spring AI line the adapters align their @McpTool annotations with; an
+             adapter release and the gateway bump this together. -->
         <spring-ai.version>2.0.1</spring-ai.version>
+        <!-- Adapter artifacts. Pinned to what resolves today; CI will pull the released
+             versions from GitHub Packages. -->
+        <hippocampus-mcp.version>0.0.1-SNAPSHOT</hippocampus-mcp.version>
     </properties>
 
     <dependencies>
-        <!-- MCP server transport, Streamable-HTTP over WebMVC with annotation-based tools
-             (ADR 0004). Exposed transitively on purpose: a consumer adds this starter and
-             does NOT re-declare the transport — the starter IS the transport. -->
+        <!-- MCP server transport, Streamable-HTTP over WebMVC with annotation-based tools. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
         </dependency>
         <!-- OAuth 2.1 resource server (JWT validation) — standard Boot starter, no new
-             library family; also exposed so consumers need no auth wiring of their own. -->
+             library family. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        <!-- The hippocampus adapter: its @McpTool beans plus the typed REST client that
+             forwards the harness token. The gateway depends on adapter artifacts only,
+             never on a project's internals. -->
+        <dependency>
+            <groupId>de.homelabs</groupId>
+            <artifactId>hippocampus-mcp</artifactId>
+            <version>${hippocampus-mcp.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -66,11 +75,15 @@
 
     <build>
         <plugins>
-            <!-- Library, not an application: no spring-boot-maven-plugin, no repackaging. -->
+            <!-- Runnable gateway: repackage into an executable jar (also what the
+                 Dockerfile ships). -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
             <!-- Generates spring-configuration-metadata.json for the homelabs.mcp.*
                  namespace (IDE completion). JDK 23+ no longer auto-detects processors on
-                 the classpath, so the path is declared explicitly; the processor stays
-                 off the consumer classpath this way. -->
+                 the classpath, so the path is declared explicitly. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

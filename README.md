@@ -1,132 +1,131 @@
 # homelabs-mcp
 
-Reusable MCP foundation for the homelabs services, packaged as a Spring Boot
-starter: `de.homelabs:homelabs-mcp-spring-boot-starter`.
+The MCP gateway of the homelab: **one** MCP server for every homelab service.
 
-A consumer that adds this starter gets
+Harnesses (OpenCode, Claude Code, Crush, …) connect here once and see the tools of
+all services at the same time. The gateway owns the harness-facing half of every
+call —
 
-- an **MCP server** (Streamable-HTTP transport, synchronous API, annotation-based
-  tools via Spring AI) on `POST /mcp`,
+- an **MCP server** (Streamable-HTTP transport, synchronous API) on `POST /mcp`,
 - an **OAuth 2.1 resource server** — Bearer JWT, issuer- and audience-bound — with
   the **RFC 9728 Protected Resource Metadata** document on
   `/.well-known/oauth-protected-resource` and the matching
   `WWW-Authenticate: Bearer resource_metadata="…"` challenge on unauthenticated
   calls,
-- a single property namespace `homelabs.mcp.*` for resource identity and
-  authorization server, all with localhost defaults,
-- and nothing else: no domain tools, no database, no server name, no
-  authorization server of its own.
 
-The starter carries no knowledge of any domain project. Tools live in the
-consuming application and are found by convention (Boot component scanning +
-Spring AI's annotation scanner), which is what lets one foundation serve
-several independently deployable services.
+— and nothing domain-specific. Tools arrive as **adapter modules**: a separate
+Maven artifact per project, carrying that project's `@McpTool` definitions plus the
+client that binds them to the project's API. Each project stays a normal API server;
+the gateway composes the tool surface.
+
+```
+harness ──MCP──▶ gateway (this service) ──HTTP + forwarded token──▶ project API
+                        │
+                        └── tool definitions + API binding from adapter artifacts
+```
+
+Because the harness token is forwarded unchanged, the project API still sees the
+real user: it validates the token itself and derives `owner` from its `sub`. The
+gateway never mints identities and never sends the subject as data.
 
 ## Requirements
 
-- Java 25
-- Spring Boot 4.1.x (parent or BOM in the consumer)
+- Java 25, Maven
 - an OAuth 2.1 authorization server (tested against Keycloak 26.8)
+- the adapter artifact of every composed project (`de.homelabs:<project>-mcp`)
 
-Spring AI 2.0.x comes in transitively through the MCP server starter; the
-starter and its first consumer share one Spring AI line on purpose.
+## Build and run
 
-## Use it
+The adapter artifacts are not on Maven Central. Until they are published to GitHub
+Packages, a local build needs the project checkout **next to this one** — the parent
+`projects/` directory holds both:
 
-```xml
-<dependency>
-    <groupId>de.homelabs</groupId>
-    <artifactId>homelabs-mcp-spring-boot-starter</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-</dependency>
+```bash
+# 1. build and install the adapter(s) into the local Maven repository
+cd ../homelabs-hippocampus
+mvn install -DskipTests
+
+# 2. build, test and run the gateway
+cd ../homelabs-mcp
+mvn clean verify
+java -jar target/homelabs-mcp-0.0.1-SNAPSHOT.jar      # gateway on :8090
 ```
 
-Until a release exists, install it from its checkout first: `mvn install`.
+Step 1 is the interim prerequisite: it makes `de.homelabs:hippocampus-mcp` resolvable
+locally. Once adapters are released to GitHub Packages, `~/.m2/settings.xml` gains a
+`github` server entry (token with `read:packages`) and step 1 disappears — the pom
+already pins the adapter version.
 
-Consumer contract — four things, all on the application side:
-
-1. **Add the starter** (above). The MCP transport and the resource server come
-   with it; do not re-declare `spring-ai-starter-mcp-server-webmvc` or
-   `spring-boot-starter-oauth2-resource-server`.
-2. **Name your server**: `spring.ai.mcp.server.name` (plus `version` if you
-   want); the starter deliberately defaults nothing here.
-3. **Implement your tools**: plain beans with `@McpTool` methods in a package
-   your application scans. Nothing to register, nothing to import.
-4. **Configure the resource identity**: `homelabs.mcp.*` (below). Every value
-   has a localhost default, so a single-host setup can start without any config.
-
-```yaml
-spring:
-  application:
-    name: my-mcp-service
-  ai:
-    mcp:
-      server:
-        name: my-service          # consumer's identity, not the starter's
-        version: 0.0.1
-
-homelabs:
-  mcp:
-    resource: ${MY_SERVICE_RESOURCE:http://localhost:8090/mcp}
-    resource-metadata-url: ${MY_SERVICE_RESOURCE_METADATA_URL:http://localhost:8090/.well-known/oauth-protected-resource}
-    scopes-supported:
-      - mcp:tools
-    issuer: ${MY_SERVICE_ISSUER_URI:http://localhost:8091/realms/hippocampus}
-    # authorization-servers is NOT needed here: unset, the PRM advertises the
-    # issuer (one-config-value). Configure it explicitly only for multi-AS setups:
-    # authorization-servers:
-    #   - https://auth1.example.org/realms/x
-
-server:
-  port: 8090
-```
-
-The starter itself contributes `spring.ai.mcp.server.protocol=STREAMABLE` and
-`spring.ai.mcp.server.type=SYNC` with the lowest precedence — Spring AI's
-Streamable-HTTP auto-configuration only activates when the protocol property is
-present in the environment, so without this the consumer would get no endpoint
-at all. Anything the application configures wins.
+Startup is config-complete out of the box (localhost defaults); point it at a real
+authorization server with the environment variables below.
 
 ## Configuration
 
-| Property | Default | Meaning |
-|---|---|---|
-| `homelabs.mcp.enabled` | `true` | wire the authorization layer (security chain, PRM, JWT decoder); the MCP transport stays either way |
-| `homelabs.mcp.resource` | `http://localhost:8090/mcp` | resource URI = audience: a token's `aud` claim must contain it |
-| `homelabs.mcp.resource-metadata-url` | `http://localhost:8090/.well-known/oauth-protected-resource` | PRM document URL advertised in the 401 challenge |
-| `homelabs.mcp.authorization-servers` | unset → PRM advertises `homelabs.mcp.issuer` | issuers advertised in the PRM document; set explicitly only for multi-AS setups |
-| `homelabs.mcp.scopes-supported` | `[mcp:tools]` | scopes advertised in the PRM document (informational, not enforced) |
-| `homelabs.mcp.issuer` | `http://localhost:8091/realms/hippocampus` | issuer whose metadata resolves the JWK set, and whose `iss` claim tokens must carry |
+Everything lives in the `homelabs.mcp.*` namespace, mapped from environment
+variables in [`application.yml`](src/main/resources/application.yml):
 
-A consumer keeps its own environment variable names and maps them onto this
-namespace, e.g. the first consumer:
+| Property | Environment variable | Default | Meaning |
+|---|---|---|---|
+| `homelabs.mcp.resource` | `HOMELABS_MCP_RESOURCE` | `http://localhost:8090/mcp` | resource URI = audience: a token's `aud` claim must contain it |
+| `homelabs.mcp.resource-metadata-url` | `HOMELABS_MCP_RESOURCE_METADATA_URL` | `http://localhost:8090/.well-known/oauth-protected-resource` | PRM document URL advertised in the 401 challenge |
+| `homelabs.mcp.issuer` | `HOMELABS_MCP_ISSUER_URI` | `http://localhost:8091/realms/hippocampus` | issuer whose metadata resolves the JWK set, and whose `iss` claim tokens must carry |
+| `homelabs.mcp.authorization-servers` | — | unset → the PRM advertises the issuer | issuers advertised in the PRM document; set explicitly only for multi-AS setups |
+| `homelabs.mcp.scopes-supported` | — | `[mcp:tools]` | scopes advertised in the PRM document (informational, not enforced) |
+| `server.port` | `SERVER_PORT` | `8090` | HTTP port |
 
-| Its env var | Maps to |
-|---|---|
-| `HIPPOCAMPUS_ISSUER_URI` | `homelabs.mcp.issuer` + `homelabs.mcp.authorization-servers` |
-| `HIPPOCAMPUS_RESOURCE` | `homelabs.mcp.resource` |
-| `HIPPOCAMPUS_RESOURCE_METADATA_URL` | `homelabs.mcp.resource-metadata-url` |
+`HOMELABS_MCP_ISSUER_URI` is the single authorization-server knob: validation and the
+PRM advertisement both follow it, so they cannot drift apart. Harness-side: every
+scope advertised in `scopes_supported` must exist as a client scope in the
+authorization server — clients such as Claude Code request exactly these.
 
-## What gets wired
+Adapter-side configuration stays with the adapter (e.g. the hippocampus API base URL
+via `hippocampus.mcp.api.base-url`).
 
-- **Security filter chain** — stateless, CSRF off (no cookies), everything
-  authenticated except the PRM document; the 401 entry point points at the
-  configured metadata URL.
-- **JWT decoder** — issuer metadata and JWK set are resolved **lazily on the
-  first token**, so the application starts even while its authorization server
-  is still coming up; the token must carry `iss` = `homelabs.mcp.issuer` and an
-  `aud` containing `homelabs.mcp.resource`.
-- **PRM document** — served at `/.well-known/oauth-protected-resource` from the
-  namespace values (`resource`, `authorization_servers`, `scopes_supported`).
-- **Auto-configuration** —
-  `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`;
-  both beans are `@ConditionalOnMissingBean`, so an application that brings its
-  own `JwtDecoder` (tests) or `SecurityFilterChain` (different policy) simply
-  wins.
+## Adding a project
 
-`homelabs.mcp.enabled=false` removes the whole authorization layer — for a
-project with no authorization server that only wants the transport. The MCP
-endpoint then falls back to Boot's default security, so expose it as you see fit.
+1. **The project** exposes a normal API and ships its adapter module, e.g.
+   `de.homelabs:hippocampus-mcp` from the hippocampus repo: `@McpTool` beans plus a
+   typed client that forwards the incoming `Authorization` header.
+2. **The gateway** declares the adapter and bumps the version:
+
+   ```xml
+   <dependency>
+       <groupId>de.homelabs</groupId>
+       <artifactId>hippocampus-mcp</artifactId>
+       <version>${hippocampus-mcp.version}</version>
+   </dependency>
+   ```
+
+3. **Nothing else.** The application scans `de.homelabs`, the adapter's beans are
+   ordinary Spring components, and Spring AI's annotation scanner turns them into MCP
+   tools. After a redeploy the new tools simply appear in `tools/list` — no realm
+   change, no harness change, no second MCP endpoint.
+
+Adapter releases and gateway versions move together: a new adapter release means a
+version bump here plus an image rebuild.
+
+## Docker image
+
+The build context is the parent `projects/` directory, the dockerfile path is
+`homelabs-mcp/Dockerfile`:
+
+```bash
+# sibling mode: the context contains the homelabs-hippocampus checkout, so the
+# adapter module is built and installed into the image's Maven cache first
+cd projects
+docker build -f homelabs-mcp/Dockerfile -t homelabs-mcp .
+
+# packages mode: no sibling checkout — the adapter comes from GitHub Packages
+docker build --secret id=github_token,src=token.txt \
+  -f homelabs-mcp/Dockerfile -t homelabs-mcp .
+```
+
+Both modes are handled by [`docker/build-gateway.sh`](docker/build-gateway.sh); an
+unresolvable adapter fails the build with the mode-specific remedy. The image ships
+only the packaged jar: `eclipse-temurin:25-jre-noble`, non-root (`ubuntu`), port 8090,
+and a healthcheck that probes the public PRM document (explicit `bash`, host and port
+joined with a slash — the runtime image's `/bin/sh` is dash and bash's `/dev/tcp`
+rejects `host:port`).
 
 ## Verification
 
@@ -141,27 +140,31 @@ curl -si -X POST http://localhost:8090/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}' \
   | grep -i 'www-authenticate'
 
-# 3. authenticated MCP call answers
+# 3. authenticated handshake, then the composed tool surface
 TOKEN=...   # access token from the configured issuer, audience = homelabs.mcp.resource
-curl -s -X POST http://localhost:8090/mcp \
+INIT=$(curl -si -X POST http://localhost:8090/mcp \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}')
+SESSION=$(printf '%s' "$INIT" | grep -i '^mcp-session-id:' | tr -d '\r' | cut -d' ' -f2)
+
+curl -s -X POST http://localhost:8090/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Mcp-Session-Id: $SESSION" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
-`mvn verify` runs 6 unit tests (property defaults and overrides, audience binding)
-and 8 integration tests (PRM document, 401 challenge, authenticated
-initialize/`tools/list`/tool call, foreign-audience rejection, namespace
-overrides, disabled mode) against a plain web context — no database, no
-Testcontainers.
-
-## First consumer
-
-`homelabs-hippocampus` (two-tier memory service) IS the first consumer since
-2026-10-24: its transport/auth wiring lives here now, its
-tool classes stayed where they are, and its `HIPPOCAMPUS_*` environment
-variables keep working through the mapping above.
+`mvn verify` runs the unit tests (property defaults/overrides, audience binding,
+authorization-server derivation) and the integration tests: PRM document, 401
+challenge, authenticated handshake and tool call, foreign-audience rejection,
+namespace overrides, issuer derivation, and the gateway composition test — the real
+application booted with the hippocampus adapter wired against a fake project API,
+asserting the complete tool surface and that a tool call arrives with the harness
+token and the MCP client identity, and that the reply text reaches the client
+unchanged. No database, no Testcontainers.
 
 ## Commit messages
 

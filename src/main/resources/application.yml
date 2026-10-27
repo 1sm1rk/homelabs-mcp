@@ -1,0 +1,38 @@
+# The homelabs MCP gateway — one MCP server for the whole homelab.
+#
+# Every value has a localhost default so a single-host deployment starts without
+# config; the HOMELABS_MCP_* environment variables are the deployment knobs (same
+# relaxed-binding convention as the rest of the homelab services).
+spring:
+  application:
+    name: homelabs-mcp
+  ai:
+    mcp:
+      server:
+        name: homelabs-mcp
+        version: 0.0.1
+        # Streamable-HTTP, synchronous MCP API. These live here rather than in an
+        # EnvironmentPostProcessor: the gateway IS the application now, so its own
+        # config file is the natural, lowest-surprise place. Spring AI's
+        # Streamable-HTTP auto-configuration only activates when the protocol property
+        # is present in the environment — without it there is no /mcp endpoint at all.
+        protocol: STREAMABLE
+        type: SYNC
+
+server:
+  port: ${SERVER_PORT:8090}
+
+homelabs:
+  mcp:
+    # The resource URI is also the audience: harness tokens must carry it in "aud".
+    resource: ${HOMELABS_MCP_RESOURCE:http://localhost:8090/mcp}
+    resource-metadata-url: ${HOMELABS_MCP_RESOURCE_METADATA_URL:http://localhost:8090/.well-known/oauth-protected-resource}
+    # The issuer is the single authorization-server value: the PRM advertises it
+    # (unless authorization-servers is set explicitly) and tokens must carry it as "iss".
+    issuer: ${HOMELABS_MCP_ISSUER_URI:http://localhost:8091/realms/hippocampus}
+    scopes-supported:
+      - mcp:tools
+    # authorization-servers: unset — the PRM derives it from the issuer above.
+    # Set it only for multi-authorization-server setups:
+    # authorization-servers:
+    #   - https://auth1.example.org/realms/x

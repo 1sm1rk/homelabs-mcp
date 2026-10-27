@@ -12,11 +12,11 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The AP-7 one-config-value rule realized: when the consumer sets ONLY the issuer
- * (the JWT validation authority), the PRM advertisement derives from it — no second
- * issuer default that can silently diverge (found live 2026-10-26: the hippocampus
- * prod deployment set the issuer env, but the starter's LAN-realms default of
- * authorization-servers kept advertising the retired LAN AS in the PRM document).
+ * The one-config-value rule realized: when only the issuer is set (the JWT validation
+ * authority), the PRM advertisement derives from it — there is no second issuer
+ * default that can silently diverge. Two independent defaults once meant the PRM could
+ * advertise an authorization server the deployment had already retired while tokens
+ * were validated against the new one.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "homelabs.mcp.issuer=https://auth.example.org/realms/homelabs"

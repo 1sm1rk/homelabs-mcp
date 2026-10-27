@@ -8,8 +8,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * The starter ships localhost defaults that match the single-host deployment it grew
- * out of; a consumer only overrides what differs.
+ * The gateway ships localhost defaults that match the single-host deployment it grew
+ * out of, so a deployment only overrides what differs.
  */
 class HomelabsMcpPropertiesTest {
 
@@ -21,12 +21,11 @@ class HomelabsMcpPropertiesTest {
         runner.run(context -> {
             HomelabsMcpProperties properties = context.getBean(HomelabsMcpProperties.class);
 
-            assertThat(properties.enabled()).isTrue();
             assertThat(properties.resource()).isEqualTo("http://localhost:8090/mcp");
             assertThat(properties.resourceMetadataUrl())
                     .isEqualTo("http://localhost:8090/.well-known/oauth-protected-resource");
             // unset by default — the PRM derives the advertised authorization servers
-            // from the issuer (AP-7 one-config-value rule)
+            // from the issuer (one-config-value rule)
             assertThat(properties.authorizationServers()).isNull();
             assertThat(properties.scopesSupported()).containsExactly("mcp:tools");
             assertThat(properties.issuer()).isEqualTo("http://localhost:8091/realms/hippocampus");
@@ -37,7 +36,6 @@ class HomelabsMcpPropertiesTest {
     void everyValueCanBeOverriddenInTheNamespace() {
         runner
                 .withPropertyValues(
-                        "homelabs.mcp.enabled=false",
                         "homelabs.mcp.resource=https://memory.example.org/mcp",
                         "homelabs.mcp.resource-metadata-url=https://memory.example.org/.well-known/oauth-protected-resource",
                         "homelabs.mcp.authorization-servers[0]=https://auth.example.org/realms/homelabs",
@@ -47,7 +45,6 @@ class HomelabsMcpPropertiesTest {
                 .run(context -> {
                     HomelabsMcpProperties properties = context.getBean(HomelabsMcpProperties.class);
 
-                    assertThat(properties.enabled()).isFalse();
                     assertThat(properties.resource()).isEqualTo("https://memory.example.org/mcp");
                     assertThat(properties.resourceMetadataUrl())
                             .isEqualTo("https://memory.example.org/.well-known/oauth-protected-resource");

@@ -11,6 +11,7 @@ import com.nimbusds.jose.proc.SecurityContext;
 
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
@@ -22,15 +23,19 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 /**
- * Test-only replacement for the starter's JwtDecoder: a symmetric-HMAC decoder so the
- * resource server accepts test tokens without a running authorization server, plus an
- * encoder to mint them. Its audience rule mirrors the one the starter configures
- * (the {@code aud} claim must contain the resource URI).
+ * Test-only JWT setup: a symmetric-HMAC decoder so the resource server accepts test
+ * tokens without a running authorization server, plus an encoder to mint them. Its
+ * audience rule mirrors the one the gateway configures (the {@code aud} claim must
+ * contain the resource URI).
+ *
+ * <p>The decoder is {@link Primary}: the gateway defines its own issuer-bound decoder
+ * unconditionally (it is an application, not a configurable library), so the test
+ * context holds two and the security chain resolves this one.
  */
 @TestConfiguration
 public class TestSecurityConfig {
 
-    /** Matches the starter default of {@code homelabs.mcp.resource}. */
+    /** Matches the default of {@code homelabs.mcp.resource}. */
     public static final String AUDIENCE = "http://localhost:8090/mcp";
 
     /** Any other audience: used to prove the audience binding rejects foreign tokens. */
@@ -44,6 +49,7 @@ public class TestSecurityConfig {
     }
 
     @Bean
+    @Primary
     JwtDecoder jwtDecoder() {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey())
                 .macAlgorithm(MacAlgorithm.HS256)
