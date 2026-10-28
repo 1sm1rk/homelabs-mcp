@@ -36,14 +36,17 @@ gateway never mints identities and never sends the subject as data.
 
 ## Build and run
 
-The adapter artifacts are not on Maven Central. Until they are published to GitHub
-Packages, a local build needs the project checkout **next to this one** — the parent
-`projects/` directory holds both:
+The adapter artifacts are not on Maven Central; they are released to GitHub
+Packages. A build resolves them from there (`github` / `github-projects` server
+entries in `~/.m2/settings.xml`, token with `read:packages`) — or installs a
+**matching-version** checkout from the parent `projects/` directory, which is what
+adapter development needs:
 
 ```bash
-# 1. build and install the adapter(s) into the local Maven repository
-cd ../homelabs-hippocampus
-mvn install -DskipTests
+# 1. only when the pinned version is not released yet (or an adapter is being
+#    changed): install the adapter(s) into the local Maven repository
+(cd ../homelabs-hippocampus && mvn install -DskipTests)
+(cd ../homelabs-projects  && mvn install -DskipTests)
 
 # 2. build, test and run the gateway
 cd ../homelabs-mcp
@@ -51,10 +54,10 @@ mvn clean verify
 java -jar target/homelabs-mcp-0.0.1-SNAPSHOT.jar      # gateway on :8090
 ```
 
-Step 1 is the interim prerequisite: it makes `de.homelabs:hippocampus-mcp` resolvable
-locally. Once adapters are released to GitHub Packages, `~/.m2/settings.xml` gains a
-`github` server entry (token with `read:packages`) and step 1 disappears — the pom
-then pins a released adapter version instead of a snapshot (see [CI/CD](#cicd)).
+The pom pins released versions (`hippocampus-mcp.version`, `projects-mcp.version`
+in [`pom.xml`](pom.xml)); a sibling checkout only satisfies such a pin when it is at
+that same version, since a development checkout installs its own snapshot version.
+Released artifacts come from GitHub Packages (see [CI/CD](#cicd)).
 
 Startup is config-complete out of the box (localhost defaults); point it at a real
 authorization server with the environment variables below.
@@ -79,14 +82,18 @@ scope advertised in `scopes_supported` must exist as a client scope in the
 authorization server — clients such as Claude Code request exactly these.
 
 Adapter-side configuration stays with the adapter (e.g. the hippocampus API base URL
-via `hippocampus.mcp.api.base-url`).
+via `hippocampus.mcp.api.base-url`, the projects API base URL via
+`projects.mcp.api.base-url`).
 
 ## Adding a project
 
 1. **The project** exposes a normal API and ships its adapter module, e.g.
-   `de.homelabs:hippocampus-mcp` from the hippocampus repo: `@McpTool` beans plus a
+   `de.homelabs:hippocampus-mcp` from the hippocampus repo or
+   `de.homelabs:projects-mcp` from the projects repo: `@McpTool` beans plus a
    typed client that forwards the incoming `Authorization` header.
-2. **The gateway** declares the adapter and bumps the version:
+2. **The project releases** the adapter: a `vX.Y.Z` tag publishes it to that
+   project's GitHub Packages repository.
+3. **The gateway** declares the adapter and pins that release:
 
    ```xml
    <dependency>
@@ -96,13 +103,13 @@ via `hippocampus.mcp.api.base-url`).
    </dependency>
    ```
 
-3. **Nothing else.** The application scans `de.homelabs`, the adapter's beans are
+4. **Nothing else.** The application scans `de.homelabs`, the adapter's beans are
    ordinary Spring components, and Spring AI's annotation scanner turns them into MCP
    tools. After a redeploy the new tools simply appear in `tools/list` — no realm
    change, no harness change, no second MCP endpoint.
 
-Adapter releases and gateway versions move together: a new adapter release means a
-version bump here plus an image rebuild.
+Onboarding a service is therefore: adapter release → pom line → image rebuild.
+Adapter releases and gateway versions move together.
 
 ## Docker image
 
@@ -110,18 +117,22 @@ The build context is the parent `projects/` directory, the dockerfile path is
 `homelabs-mcp/Dockerfile`:
 
 ```bash
-# sibling mode: the context contains the homelabs-hippocampus checkout, so the
-# adapter module is built and installed into the image's Maven cache first
+# sibling mode: the context contains the homelabs-hippocampus and homelabs-projects
+# checkouts at the pinned versions, so both adapter modules are built and installed
+# into the image's Maven cache first
 cd projects
 docker build -f homelabs-mcp/Dockerfile -t homelabs-mcp .
 
-# packages mode: no sibling checkout — the adapter comes from GitHub Packages
+# packages mode: no sibling checkout — both adapters come from GitHub Packages
 docker build --secret id=github_token,src=token.txt \
   -f homelabs-mcp/Dockerfile -t homelabs-mcp .
 ```
 
-Both modes are handled by [`docker/build-gateway.sh`](docker/build-gateway.sh); an
-unresolvable adapter fails the build with the mode-specific remedy. The image ships
+Both modes are handled by [`docker/build-gateway.sh`](docker/build-gateway.sh), and
+they are decided per adapter: a context that carries only one sibling builds that
+adapter from source and pulls only the missing one from GitHub Packages — which is
+why the token is required as soon as one checkout is absent. An unresolvable
+adapter fails the build with the mode-specific remedy. The image ships
 only the packaged jar: `eclipse-temurin:25-jre-noble`, non-root (`ubuntu`), port 8090,
 and a healthcheck that probes the public PRM document (explicit `bash`, host and port
 joined with a slash — the runtime image's `/bin/sh` is dash and bash's `/dev/tcp`
@@ -134,7 +145,7 @@ rejects `host:port`).
 
 | Job | Runs on | What it does |
 |---|---|---|
-| `verify` | every pull request, every push, every tag | `mvn -B verify` with the adapter resolved from GitHub Packages; a red run blocks every publish |
+| `verify` | every pull request, every push, every tag | `mvn -B verify` with the adapter artifacts resolved from GitHub Packages; a red run blocks every publish |
 | `publish-image` | pushes (and manual runs) on `main` | builds and pushes the container image |
 
 Merge to `main` publishes `ghcr.io/1sm1rk/homelabs-mcp` tagged `latest` and
@@ -145,33 +156,32 @@ docker compose pull && docker compose up -d
 ```
 
 The image job uses the Dockerfile's **packages mode** deliberately: the build
-context holds no sibling project checkout, so the adapter comes from GitHub
+context holds no sibling project checkout, so the adapters come from GitHub
 Packages through the `github_token` build secret — the published image is always
 built from released adapter artifacts.
 
 ### Adapter releases and the build prerequisite
 
-`verify` resolves `de.homelabs:hippocampus-mcp` from GitHub Packages; the workflow
-generates a `settings.xml` for that (`github` server entry plus the packages
-repository, credentials from `GITHUB_TOKEN`, never echoed). Three things must line
-up before the first green run:
+`verify` resolves `de.homelabs:hippocampus-mcp` and `de.homelabs:projects-mcp` from
+GitHub Packages; the workflow generates a `settings.xml` for that (`github` and
+`github-projects` server entries plus one packages repository per adapter,
+credentials from `GITHUB_TOKEN`, never echoed). Three things must line up for every
+composed adapter:
 
-1. an adapter release exists — a `vX.Y.Z` tag in the hippocampus repository
-   publishes it,
-2. `hippocampus-mcp.version` in [`pom.xml`](pom.xml) pins that released version.
-   It currently pins `0.0.1-SNAPSHOT`, which exists only in local Maven
-   repositories — until the first release plus a version bump, `verify` fails with
-   an error message naming exactly these prerequisites,
+1. an adapter release exists — a `vX.Y.Z` tag in the project repository publishes
+   it (`homelabs-hippocampus` → `hippocampus-mcp`, `homelabs-projects` →
+   `projects-mcp`),
+2. the matching version property in [`pom.xml`](pom.xml) pins that released
+   version (`hippocampus-mcp.version`, `projects-mcp.version`); a `SNAPSHOT` pin
+   exists only in local Maven repositories and fails `verify` with an error message
+   naming these prerequisites,
 3. this repository may read that package (see below).
-
-Order matters on the very first round: tag the adapter release, grant the access
-rights, then bump the version here — before that the `verify` job on `main` cannot
-go green and the image job therefore cannot run.
 
 A new adapter release is consumed with a normal pull request:
 
 ```bash
 mvn versions:set-property -Dproperty=hippocampus-mcp.version -DnewVersion=0.1.0
+mvn versions:set-property -Dproperty=projects-mcp.version    -DnewVersion=0.1.0
 ```
 
 ### One-time repository settings
@@ -180,9 +190,10 @@ mvn versions:set-property -Dproperty=hippocampus-mcp.version -DnewVersion=0.1.0
   check **`verify`**.
 - Packages → `homelabs-mcp` (container image) → package settings: visibility
   **public**, so the deployment host needs no registry credentials.
-- In the hippocampus repository: Packages → `hippocampus-mcp` → *Manage Actions
-  access* → add `1sm1rk/homelabs-mcp` with **Read** (GitHub Packages requires an
-  authenticated read even for public packages).
+- In each adapter repository: Packages → the adapter package → *Manage Actions
+  access* → add `1sm1rk/homelabs-mcp` with **Read** (`hippocampus-mcp` in
+  `homelabs-hippocampus`, `projects-mcp` in `homelabs-projects`; GitHub Packages
+  requires an authenticated read even for public packages).
 
 ## Verification
 
@@ -218,10 +229,10 @@ curl -s -X POST http://localhost:8090/mcp \
 authorization-server derivation) and the integration tests: PRM document, 401
 challenge, authenticated handshake and tool call, foreign-audience rejection,
 namespace overrides, issuer derivation, and the gateway composition test — the real
-application booted with the hippocampus adapter wired against a fake project API,
-asserting the complete tool surface and that a tool call arrives with the harness
-token and the MCP client identity, and that the reply text reaches the client
-unchanged. No database, no Testcontainers.
+application booted with both adapters (hippocampus and projects) wired against a fake
+project API, asserting the complete combined tool surface and that a tool call arrives
+with the harness token and the MCP client identity, and that the reply text reaches
+the client unchanged. No database, no Testcontainers.
 
 ## Commit messages
 

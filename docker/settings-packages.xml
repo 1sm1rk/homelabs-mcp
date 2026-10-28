@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Maven settings for the packages build mode (see build-gateway.sh): resolves the
-  adapter artifact `de.homelabs:hippocampus-mcp` from GitHub Packages.
+  adapter artifacts `de.homelabs:hippocampus-mcp` and `de.homelabs:projects-mcp`
+  from GitHub Packages — one repository per adapter, both read with the same token.
 
   The token itself is never written into this file or into a layer — it arrives as
   the environment variable GITHUB_TOKEN, read from the BuildKit secret by the build
-  script, and is consumed here only for the `github` server entry.
+  script, and is consumed here for the `github` and `github-projects` server entries
+  (one entry per repository id).
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -14,6 +16,11 @@
     <servers>
         <server>
             <id>github</id>
+            <username>${env.GITHUB_ACTOR}</username>
+            <password>${env.GITHUB_TOKEN}</password>
+        </server>
+        <server>
+            <id>github-projects</id>
             <username>${env.GITHUB_ACTOR}</username>
             <password>${env.GITHUB_TOKEN}</password>
         </server>
@@ -26,6 +33,16 @@
                 <repository>
                     <id>github</id>
                     <url>https://maven.pkg.github.com/1sm1rk/homelabs-hippocampus</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </repository>
+                <repository>
+                    <id>github-projects</id>
+                    <url>https://maven.pkg.github.com/1sm1rk/homelabs-projects</url>
                     <releases>
                         <enabled>true</enabled>
                     </releases>

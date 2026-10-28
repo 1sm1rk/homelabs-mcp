@@ -45,10 +45,11 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      # Adapters are not on Maven Central: the `github` server entry and the
-      # GitHub Packages repository both come from this throwaway settings file
-      # (the token is never echoed). The pom's repository-independent defaults
-      # stay untouched, so local builds keep working against ~/.m2.
+      # Adapters are not on Maven Central: the `github`/`github-projects` server
+      # entries and the two GitHub Packages repositories all come from this
+      # throwaway settings file (the token is never echoed). The pom's
+      # repository-independent defaults stay untouched, so local builds keep
+      # working against ~/.m2.
       - name: Write Maven settings for GitHub Packages
         run: |
           cat > "$RUNNER_TEMP/settings.xml" <<'XML'
@@ -57,6 +58,11 @@ jobs:
             <servers>
               <server>
                 <id>github</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+              <server>
+                <id>github-projects</id>
                 <username>${env.GITHUB_ACTOR}</username>
                 <password>${env.GITHUB_TOKEN}</password>
               </server>
@@ -71,6 +77,12 @@ jobs:
                     <releases><enabled>true</enabled></releases>
                     <snapshots><enabled>true</enabled></snapshots>
                   </repository>
+                  <repository>
+                    <id>github-projects</id>
+                    <url>https://maven.pkg.github.com/1sm1rk/homelabs-projects</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </repository>
                 </repositories>
               </profile>
             </profiles>
@@ -79,17 +91,17 @@ jobs:
             </activeProfiles>
           </settings>
           XML
-      # An unresolvable adapter is the expected state until the first adapter
-      # release + a version bump in pom.xml, so it gets a message naming the
+      # An unresolvable adapter is the expected state until the pinned adapter
+      # releases + the matching version bump, so it gets a message naming the
       # prerequisites instead of a bare Maven stack trace.
       - name: mvn verify
         run: |
           if mvn -B -ntp -s "$RUNNER_TEMP/settings.xml" verify 2>&1 | tee "$RUNNER_TEMP/verify.log"; then
             exit 0
           fi
-          if grep -q 'de\.homelabs:hippocampus-mcp' "$RUNNER_TEMP/verify.log" \
+          if grep -qE 'de\.homelabs:(hippocampus-mcp|projects-mcp)' "$RUNNER_TEMP/verify.log" \
              && grep -qi 'could not be resolved' "$RUNNER_TEMP/verify.log"; then
-            echo "::error::de.homelabs:hippocampus-mcp could not be resolved. Required: (1) a released adapter version in GitHub Packages (tag vX.Y.Z in the hippocampus repository), (2) hippocampus-mcp.version in pom.xml pinned to that release (a SNAPSHOT exists only in local Maven repositories), (3) this repository allowed to read the hippocampus package (package settings -> Manage Actions access)."
+            echo "::error::an adapter artifact could not be resolved (de.homelabs:hippocampus-mcp or de.homelabs:projects-mcp - see the failing module above). Required per artifact: (1) that version released to GitHub Packages (a vX.Y.Z tag in its own repository, homelabs-hippocampus or homelabs-projects), (2) the matching version property in this pom.xml pinned to that release (a SNAPSHOT exists only in local Maven repositories), (3) this repository allowed to read the package (package settings -> Manage Actions access)."
           fi
           exit 1
 
