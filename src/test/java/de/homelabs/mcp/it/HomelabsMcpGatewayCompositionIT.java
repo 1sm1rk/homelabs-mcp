@@ -37,18 +37,29 @@ class HomelabsMcpGatewayCompositionIT {
             {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"gateway-it","version":"0"}}}
             """;
 
-    /** The complete tool surface the hippocampus adapter contributes. */
+    /** The combined surface both adapters contribute. */
     private static final Set<String> EXPECTED_TOOLS = Set.of(
+            // hippocampus adapter
             "store", "find", "list", "update",
             "promote", "import_file",
             "ltm_find", "ltm_get", "ltm_list",
-            "ping");
+            "ping",
+            // projects adapter: projects
+            "store_project", "get_project", "find_projects", "update_project",
+            "deactivate_project", "activate_project", "archive_project",
+            // projects adapter: work items
+            "store_work_package", "get_work_package", "find_work_packages", "update_work_package",
+            "store_task", "get_task", "find_tasks", "update_task",
+            // projects adapter: collaboration
+            "store_comment", "find_comments", "get_activity", "list_labels",
+            "list_attachments");
 
     private static final FakeProjectApi API = new FakeProjectApi();
 
     @DynamicPropertySource
     static void adapterBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("hippocampus.mcp.api.base-url", API::baseUrl);
+        registry.add("projects.mcp.api.base-url", API::baseUrl);
     }
 
     @AfterAll

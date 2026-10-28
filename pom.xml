@@ -32,6 +32,7 @@
         <!-- Adapter artifacts. Pinned to what resolves today; CI will pull the released
              versions from GitHub Packages. -->
         <hippocampus-mcp.version>0.1.0</hippocampus-mcp.version>
+        <projects-mcp.version>0.1.0</projects-mcp.version>
     </properties>
 
     <dependencies>
@@ -53,6 +54,14 @@
             <groupId>de.homelabs</groupId>
             <artifactId>hippocampus-mcp</artifactId>
             <version>${hippocampus-mcp.version}</version>
+        </dependency>
+        <!-- The projects adapter: the tool beans of the project-management service plus
+             the typed REST client that forwards the harness token. Same contract as
+             above — adapter artifact only, no project internals. -->
+        <dependency>
+            <groupId>de.homelabs</groupId>
+            <artifactId>projects-mcp</artifactId>
+            <version>${projects-mcp.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -45,10 +45,11 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      # Adapters are not on Maven Central: the `github` server entry and the
-      # GitHub Packages repository both come from this throwaway settings file
-      # (the token is never echoed). The pom's repository-independent defaults
-      # stay untouched, so local builds keep working against ~/.m2.
+      # Adapters are not on Maven Central: the `github`/`github-projects` server
+      # entries and the two GitHub Packages repositories all come from this
+      # throwaway settings file (the token is never echoed). The pom's
+      # repository-independent defaults stay untouched, so local builds keep
+      # working against ~/.m2.
       - name: Write Maven settings for GitHub Packages
         run: |
           cat > "$RUNNER_TEMP/settings.xml" <<'XML'
@@ -60,6 +61,11 @@ jobs:
                 <username>${env.GITHUB_ACTOR}</username>
                 <password>${env.GITHUB_TOKEN}</password>
               </server>
+              <server>
+                <id>github-projects</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
             </servers>
             <profiles>
               <profile>
@@ -68,6 +74,12 @@ jobs:
                   <repository>
                     <id>github</id>
                     <url>https://maven.pkg.github.com/1sm1rk/homelabs-hippocampus</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </repository>
+                  <repository>
+                    <id>github-projects</id>
+                    <url>https://maven.pkg.github.com/1sm1rk/homelabs-projects</url>
                     <releases><enabled>true</enabled></releases>
                     <snapshots><enabled>true</enabled></snapshots>
                   </repository>
