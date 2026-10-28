@@ -12,7 +12,11 @@
 #                   `homelabs-projects/projects-mcp`), the normal case for
 #                   local/OSS builds from a projects checkout: that adapter
 #                   module is built and installed into the shared .m2 cache
-#                   first, then the gateway builds against it.
+#                   first, then the gateway builds against it. The copies are
+#                   ephemeral, so their versions are set to the version the
+#                   gateway pom PINS before installing (the release workflow's
+#                   own trick) — a released pin then resolves the sibling-built
+#                   artifact, a SNAPSHOT pin the sibling as-is. Token-free.
 #   packages mode — that sibling checkout is absent: the adapter comes from
 #                   GitHub Packages with a build secret
 #                   (`--secret id=github_token,...`). This is the CI path.
@@ -43,11 +47,29 @@ cp -a "$CONTEXT_DIR/homelabs-mcp/pom.xml" "$CONTEXT_DIR/homelabs-mcp/src" "$GATE
 mvn_settings=()
 missing_adapters=()
 
+# Reads the version the gateway pom pins for an adapter, from the property name.
+pinned_version() {
+    mvn -B -ntp -q -f "$GATEWAY_DIR/pom.xml" help:evaluate \
+        -Dexpression="$1.version" -DforceStdout
+}
+
+# Copies a sibling repo (ephemeral), sets its versions to the gateway pin, and
+# installs the adapter module + its parent into the shared .m2 cache.
+build_sibling() {
+    # $1 = sibling repo dir in the context, $2 = -pl module path, $3 = pin property
+    local src="$1" module="$2" pin="$3" version
+    rm -rf "$ADAPTER_DIR"
+    cp -a "$src" "$ADAPTER_DIR"
+    version="$(pinned_version "$pin")"
+    echo "   pinned version: $version"
+    ( cd "$ADAPTER_DIR" \
+      && mvn -B -ntp versions:set -DnewVersion="$version" -DgenerateBackupPoms=false \
+      && mvn -B -ntp -pl "$module" -am install -DskipTests )
+}
+
 if [ -d "$HIPPOCAMPUS_ADAPTER" ]; then
     echo "== hippocampus-mcp: sibling checkout found in the build context"
-    rm -rf "$ADAPTER_DIR"
-    cp -a "$CONTEXT_DIR/homelabs-hippocampus" "$ADAPTER_DIR"
-    ( cd "$ADAPTER_DIR" && mvn -B -ntp -pl hippocampus-mcp -am install -DskipTests )
+    build_sibling "$CONTEXT_DIR/homelabs-hippocampus" hippocampus-mcp hippocampus-mcp
 else
     echo "== hippocampus-mcp: released artifact from GitHub Packages"
     missing_adapters+=("de.homelabs:hippocampus-mcp")
@@ -55,9 +77,7 @@ fi
 
 if [ -d "$PROJECTS_ADAPTER" ]; then
     echo "== projects-mcp: sibling checkout found in the build context"
-    rm -rf "$ADAPTER_DIR"
-    cp -a "$CONTEXT_DIR/homelabs-projects" "$ADAPTER_DIR"
-    ( cd "$ADAPTER_DIR" && mvn -B -ntp -pl projects-mcp -am install -DskipTests )
+    build_sibling "$CONTEXT_DIR/homelabs-projects" projects-mcp projects-mcp
 else
     echo "== projects-mcp: released artifact from GitHub Packages"
     missing_adapters+=("de.homelabs:projects-mcp")
