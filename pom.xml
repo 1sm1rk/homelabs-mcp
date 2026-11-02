@@ -32,7 +32,7 @@
         <!-- Adapter artifacts. Pinned to what resolves today; CI will pull the released
              versions from GitHub Packages. -->
         <hippocampus-mcp.version>0.1.0</hippocampus-mcp.version>
-        <projects-mcp.version>0.1.0</projects-mcp.version>
+        <projects-mcp.version>0.2.0</projects-mcp.version>
     </properties>
 
     <dependencies>
